@@ -120,8 +120,8 @@ class App : Application() {
         val btnClear = Button("✕")
         val btnUndo = Button("↩")
         val btnRedo = Button("↪")
-        val btnSave = Button("💾")
-        val btnLoad = Button("📂")
+        val btnSave = Button("1")
+        val btnLoad = Button("2")
 
         val buttons = listOf(btnClear, btnUndo, btnRedo, btnSave, btnLoad)
         buttons.forEach { button ->
@@ -138,12 +138,10 @@ class App : Application() {
         -fx-border-width: 0 1px 0 0;
         -fx-cursor: hand;
     """
-
             button.isFocusTraversable = false
         }
 
         //btnLoad.style = btnLoad.style + "-fx-border-width: 0;"
-
 
         val slider = Slider(0.0, 100.0, 50.0)
         slider.prefWidth = 150.0
@@ -177,6 +175,7 @@ class App : Application() {
         controlBox.alignment = Pos.CENTER
         controlBox.padding = Insets(0.0)
         controlBox.children.addAll(buttons)
+        controlBox.children.addAll(slider)
         controlBox.style = "-fx-background-color: #f0f0f0; -fx-border-color: #cccccc; -fx-border-width: 1px 0 0 0;"
 
         controlBox.setPrefHeight(100.0)
