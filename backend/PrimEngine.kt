@@ -13,7 +13,7 @@ class PrimEngine {
             for (j in (i + 1) until n) {
                 val w = matrix[i][j]
                 if (w != -1.0 && w != Double.POSITIVE_INFINITY) {
-                    edges.add(Edge(vertices[i], vertices[j], w.toInt()))
+                    edges.add(Edge(vertices[i], vertices[j], w))
                 }
             }
         }
@@ -66,7 +66,7 @@ class PrimEngine {
                 visitedVertices.toSet(),
                 selectedEdges.toSet(),
                 emptySet(),
-                "Шаг $stepCounter: Добавлено минимальное ребро ${newEdge.from.id}-${newEdge.to.id} с весом ${newEdge.weight}",
+                "Шаг $stepCounter: Добавлено минимальное ребро ${newEdge.from.name}-${newEdge.to.name} с весом ${newEdge.weight}",
                 selectedEdges.sumOf { it.weight }
             ))
 
