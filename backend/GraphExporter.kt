@@ -1,7 +1,7 @@
 package org.example.backend
 
 import java.io.File
-import org.example.Vertex
+import org.example.backend.models.Vertex
 
 class GraphExporter(){
     fun SaveGraphToFile(filePath: String, vertices: List<Vertex>, matrix: Array<DoubleArray>){
