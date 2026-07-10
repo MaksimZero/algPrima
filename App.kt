@@ -1,4 +1,4 @@
-package com.example.newpl.demo
+package org.example
 
 import javafx.animation.KeyFrame
 import javafx.animation.Timeline
@@ -20,6 +20,7 @@ import org.example.backend.PrimEngine
 import org.example.backend.models.AlgorithmSnapshot
 import org.example.backend.models.Edge
 import org.example.backend.models.Vertex
+import org.example.backend.GraphParser
 
 fun main() {
     Application.launch(App::class.java)
@@ -51,6 +52,41 @@ class App : Application() {
 
     private val currentStep: AlgorithmSnapshot?
         get() = if (snapshots.isNotEmpty() && currentIndex in snapshots.indices) snapshots[currentIndex] else null
+
+    private fun loadGraphFromFile() {
+        val fileChooser = javafx.stage.FileChooser()
+        fileChooser.title = "Открыть файл графа"
+        fileChooser.extensionFilters.add(
+            javafx.stage.FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
+        )
+
+        val stage = gc.canvas.scene.window as javafx.stage.Stage
+        val file = fileChooser.showOpenDialog(stage)
+
+        if (file != null) {
+            try {
+                val parsedGraph = GraphParser().parseFile(file.absolutePath)
+                clearGraph()
+                vertexes.addAll(parsedGraph.vertices)
+                vertexCounter = vertexes.size
+
+                val n = parsedGraph.vertices.size
+                for (i in 0 until n) {
+                    for (j in i + 1 until n) { // Проверяем только верхний треугольник, чтобы не дублировать рёбра
+                        val weight = parsedGraph.matrix[i][j]
+                        if (weight != -1.0 && weight != Double.POSITIVE_INFINITY) {
+                            val fromVertex = parsedGraph.vertices[i]
+                            val toVertex = parsedGraph.vertices[j]
+                            addEdge(fromVertex, toVertex, weight)
+                        }
+                    }
+                }
+                updateUI()
+            } catch (e: Exception) {
+                showError("Не удалось прочитать файл: ${e.message}")
+            }
+        }
+    }
 
     fun addVertex(x: Double, y: Double, radius: Double = 20.0, color: Color = Color.LIGHTBLUE): Vertex {
         val name = "V${++vertexCounter}"
@@ -396,6 +432,9 @@ class App : Application() {
             clearGraph()
             drawAll(gc)
         }
+        btnLoad.setOnAction {
+            loadGraphFromFile()
+        }
 
         btnPlay.setOnAction {
             if (snapshots.isEmpty()) {
@@ -413,6 +452,8 @@ class App : Application() {
         val infoPanel = VBox(10.0)
         infoPanel.padding = Insets(15.0)
         infoPanel.style = "-fx-background-color: #f4f4f4; -fx-border-color: #cccccc;"
+        lblMessage.isWrapText = true
+        lblEdges.isWrapText = true
         infoPanel.children.addAll(
             lblStep, lblWeight, lblMessage,
             Label("---"),
