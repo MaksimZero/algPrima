@@ -1,4 +1,4 @@
-package org.example
+package com.example.newpl.demo
 
 import javafx.animation.KeyFrame
 import javafx.animation.Timeline
@@ -53,6 +53,40 @@ class App : Application() {
     private val currentStep: AlgorithmSnapshot?
         get() = if (snapshots.isNotEmpty() && currentIndex in snapshots.indices) snapshots[currentIndex] else null
 
+    private fun saveGraphToFile() {
+        val fileChooser = javafx.stage.FileChooser()
+        fileChooser.title = "Сохранить граф в файл"
+        fileChooser.extensionFilters.add(
+            javafx.stage.FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
+        )
+
+        val stage = gc.canvas.scene.window as javafx.stage.Stage
+        val file = fileChooser.showSaveDialog(stage)
+
+        if (file != null) {
+            try {
+                file.bufferedWriter().use { writer ->
+                    for (vertex in vertexes) {
+                        writer.write("pos ${vertex.name} ${vertex.x} ${vertex.y}\n")
+                    }
+
+                    for (edge in edges) {
+                        writer.write("${edge.from.name} ${edge.to.name} ${edge.weight}\n")
+                    }
+                }
+
+                val alert = Alert(Alert.AlertType.INFORMATION)
+                alert.title = "Успешно"
+                alert.headerText = null
+                alert.contentText = "Граф успешно сохранён в файл: ${file.name}"
+                alert.showAndWait()
+
+            } catch (e: Exception) {
+                showError("Не удалось сохранить файл: ${e.message}")
+            }
+        }
+    }
+
     private fun loadGraphFromFile() {
         val fileChooser = javafx.stage.FileChooser()
         fileChooser.title = "Открыть файл графа"
@@ -87,6 +121,8 @@ class App : Application() {
             }
         }
     }
+
+
 
     fun addVertex(x: Double, y: Double, radius: Double = 20.0, color: Color = Color.LIGHTBLUE): Vertex {
         val name = "V${++vertexCounter}"
@@ -131,7 +167,11 @@ class App : Application() {
     }
 
     private fun stepForward() {
-        if (snapshots.isEmpty()) return
+        if (snapshots.isEmpty()) {
+            runAlgorithm(null)
+            updateUI()
+            return
+        }
         if (currentIndex < snapshots.size - 1) {
             currentIndex++
             updateUI()
@@ -167,6 +207,15 @@ class App : Application() {
         pause()
         currentIndex = 0
         updateUI()
+    }
+
+    private fun clearMST() {
+        pause()
+        currentIndex = 0
+        //currentStep = null
+        snapshots = emptyList()
+        updateUI()
+        drawAll(gc)
     }
 
     private fun runAlgorithm(startVertex: Vertex?) {
@@ -205,7 +254,6 @@ class App : Application() {
     }
 
     private fun updateUI() {
-        drawAll(gc)
         val step = currentStep
         if (step != null) {
             lblStep.text = "Шаг: ${currentIndex + 1} / ${snapshots.size}"
@@ -219,6 +267,25 @@ class App : Application() {
             lblMessage.text = "Сообщение: "
             lblEdges.text = "Рёбра в остове: —"
         }
+        drawAll(gc)
+    }
+
+    private fun distanceToPoint(px: Double, py: Double, x1: Double, y1: Double, x2: Double, y2: Double): Double {
+        val dx = x2 - x1
+        val dy = y2 - y1
+        val lenSq = dx * dx + dy * dy
+
+        if (lenSq == 0.0) {
+            return Math.hypot(px - x1, py - y1)
+        }
+
+        var t = ((px - x1) * dx + (py - y1) * dy) / lenSq
+        t = t.coerceIn(0.0, 1.0)
+
+        val projX = x1 + t * dx
+        val projY = y1 + t * dy
+
+        return Math.hypot(px - projX, py - projY)
     }
 
     private fun drawAll(gc: GraphicsContext) {
@@ -318,6 +385,7 @@ class App : Application() {
                     if (pressTarget == null) {
                         // в пустое место - создаём вершину
                         addVertex(x, y)
+                        clearMST()
                         drawAll(gc)
                     } else {
                         // на вершину - начинаем перетаскивание
@@ -340,6 +408,7 @@ class App : Application() {
                                 if (weight != null) { // если ввели число добавляем ребро
                                     addEdge(selectedVertex!!, target, weight)
                                     selectedVertex = null
+                                    clearMST()
                                     drawAll(gc)
                                 } else { // если отменили ввод то вершину не добавляем
                                     selectedVertex = null
@@ -354,9 +423,21 @@ class App : Application() {
                     }
                 }
                 MouseButton.SECONDARY -> { // ПКМ
-                    if (pressTarget != null) { // нажали на вершину - удаляем её
+                    // Сначала проверяем вершину
+                    if (pressTarget != null) {
                         removeVertex(pressTarget!!)
+                        clearMST()
                         drawAll(gc)
+                    } else {
+                        // Если не вершина, проверяем ребро
+                        val clickedEdge = edges.findLast { edge ->
+                            distanceToPoint(x, y, edge.from.x, edge.from.y, edge.to.x, edge.to.y) < 10.0
+                        }
+                        if (clickedEdge != null) {
+                            removeEdge(clickedEdge)
+                            clearMST()
+                            drawAll(gc)
+                        }
                     }
                 }
                 else -> {} // остальные кнопки мыши, else нельзя удалить, это when
@@ -385,8 +466,25 @@ class App : Application() {
         val btnClear = Button("✕")
         val btnUndo = Button("↩")
         val btnRedo = Button("↪")
-        val btnSave = Button("1")
-        val btnLoad = Button("2")
+        val btnSave = Button().apply {
+            val image = javafx.scene.image.Image("file:src/main/resources/images/save.png")
+            graphic = javafx.scene.image.ImageView(image).apply {
+                fitWidth = 40.0
+                fitHeight = 40.0
+                isPreserveRatio = true
+            }
+            contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
+        }
+
+        val btnLoad = Button().apply {
+            val image = javafx.scene.image.Image("file:src/main/resources/images/load.png")
+            graphic = javafx.scene.image.ImageView(image).apply {
+                fitWidth = 40.0
+                fitHeight = 40.0
+                isPreserveRatio = true
+            }
+            contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
+        }
         val btnPlay = Button("▶")
         val btnPause = Button("⏸")
         val btnStop = Button("⏹")
@@ -414,6 +512,8 @@ class App : Application() {
             button.isFocusTraversable = false
         }
 
+
+
         val slider = Slider(200.0, 3000.0, 1000.0)
         slider.prefWidth = 150.0
         slider.isShowTickLabels = true
@@ -432,6 +532,11 @@ class App : Application() {
             clearGraph()
             drawAll(gc)
         }
+
+        btnSave.setOnAction {
+            saveGraphToFile()
+        }
+
         btnLoad.setOnAction {
             loadGraphFromFile()
         }
@@ -443,6 +548,7 @@ class App : Application() {
             if (snapshots.isNotEmpty() && currentIndex < snapshots.size - 1) {
                 play()
             }
+
         }
         btnPause.setOnAction { pause() }
         btnStop.setOnAction { reset() }
