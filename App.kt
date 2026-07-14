@@ -1,4 +1,4 @@
-package com.example.newpl.demo
+package org.example
 
 import javafx.animation.KeyFrame
 import javafx.animation.Timeline
@@ -9,18 +9,25 @@ import javafx.scene.Scene
 import javafx.scene.canvas.Canvas
 import javafx.scene.canvas.GraphicsContext
 import javafx.scene.control.*
+import javafx.scene.image.Image
+import javafx.scene.image.ImageView
 import javafx.scene.input.MouseButton
 import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.VBox
 import javafx.scene.paint.Color
+import javafx.scene.text.Font
+import javafx.stage.FileChooser
 import javafx.stage.Stage
 import javafx.util.Duration
+import org.example.backend.GraphExporter
 import org.example.backend.PrimEngine
 import org.example.backend.models.AlgorithmSnapshot
 import org.example.backend.models.Edge
 import org.example.backend.models.Vertex
 import org.example.backend.GraphParser
+import kotlin.apply
+import kotlin.jvm.java
 
 fun main() {
     Application.launch(App::class.java)
@@ -54,32 +61,71 @@ class App : Application() {
         get() = if (snapshots.isNotEmpty() && currentIndex in snapshots.indices) snapshots[currentIndex] else null
 
     private fun saveGraphToFile() {
-        val fileChooser = javafx.stage.FileChooser()
+        val fileChooser = FileChooser()
         fileChooser.title = "Сохранить граф в файл"
         fileChooser.extensionFilters.add(
-            javafx.stage.FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
+            FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
         )
 
-        val stage = gc.canvas.scene.window as javafx.stage.Stage
+
+        val stage = gc.canvas.scene.window as Stage
         val file = fileChooser.showSaveDialog(stage)
 
         if (file != null) {
             try {
-                file.bufferedWriter().use { writer ->
-                    for (vertex in vertexes) {
-                        writer.write("pos ${vertex.name} ${vertex.x} ${vertex.y}\n")
+                val n = vertexes.size
+                val generatedMatrix = Array(n) { i ->
+                    DoubleArray(n) { j ->
+                        if (i == j) -1.0 else Double.POSITIVE_INFINITY
+                    }
+                }
+                for (edge in edges) {
+                    val i = vertexes.indexOf(edge.from)
+                    val j = vertexes.indexOf(edge.to)
+                    if (i != -1 && j != -1) {
+                        generatedMatrix[i][j] = edge.weight
+                        generatedMatrix[j][i] = edge.weight
+                    }
+                }
+                var snapshotsToSend: List<AlgorithmSnapshot>? = null
+
+                if (snapshots.isNotEmpty()) {
+                    val alert = Alert(Alert.AlertType.CONFIRMATION).apply {
+                        title = "Выбор режима сохранения"
+                        headerText = "Обнаружена история шагов алгоритма Прима."
+                        contentText = "Желаете сохранить файл вместе с пошаговой визуализацией графа?"
+
+                        val btnYes = ButtonType("Да")
+                        val btnNo = ButtonType("Нет")
+                        val btnCancel = ButtonType("Отмена", ButtonBar.ButtonData.CANCEL_CLOSE)
+
+                        buttonTypes.setAll(btnYes, btnNo, btnCancel)
                     }
 
-                    for (edge in edges) {
-                        writer.write("${edge.from.name} ${edge.to.name} ${edge.weight}\n")
+                    val result = alert.showAndWait()
+                    if (result.isPresent) {
+                        when (result.get().text) {
+                            "Да" -> snapshotsToSend = snapshots
+                            "Нет" -> snapshotsToSend = null
+                            "Отмена" -> return
+                        }
                     }
                 }
 
-                val alert = Alert(Alert.AlertType.INFORMATION)
-                alert.title = "Успешно"
-                alert.headerText = null
-                alert.contentText = "Граф успешно сохранён в файл: ${file.name}"
-                alert.showAndWait()
+                GraphExporter().saveGraphToFile(
+                    filePath = file.absolutePath,
+                    vertices = vertexes,
+                    matrix = generatedMatrix,
+                    mstSteps = snapshotsToSend
+                )
+
+
+                Alert(Alert.AlertType.INFORMATION).apply {
+                    title = "Успех"
+                    headerText = null
+                    contentText = "Граф успешно сохранен!"
+                    showAndWait()
+                }
 
             } catch (e: Exception) {
                 showError("Не удалось сохранить файл: ${e.message}")
@@ -88,25 +134,25 @@ class App : Application() {
     }
 
     private fun loadGraphFromFile() {
-        val fileChooser = javafx.stage.FileChooser()
-        fileChooser.title = "Открыть файл графа"
-        fileChooser.extensionFilters.add(
-            javafx.stage.FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
-        )
+        val fileChooser = FileChooser().apply {
+            title = "Открыть файл графа"
+            extensionFilters.add(FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt"))
+        }
 
-        val stage = gc.canvas.scene.window as javafx.stage.Stage
+        val stage = gc.canvas.scene.window as Stage
         val file = fileChooser.showOpenDialog(stage)
 
         if (file != null) {
             try {
                 val parsedGraph = GraphParser().parseFile(file.absolutePath)
+
                 clearGraph()
                 vertexes.addAll(parsedGraph.vertices)
                 vertexCounter = vertexes.size
 
                 val n = parsedGraph.vertices.size
                 for (i in 0 until n) {
-                    for (j in i + 1 until n) { // Проверяем только верхний треугольник, чтобы не дублировать рёбра
+                    for (j in i + 1 until n) {
                         val weight = parsedGraph.matrix[i][j]
                         if (weight != -1.0 && weight != Double.POSITIVE_INFINITY) {
                             val fromVertex = parsedGraph.vertices[i]
@@ -115,6 +161,28 @@ class App : Application() {
                         }
                     }
                 }
+
+                if (parsedGraph.steps.isNotEmpty()) {
+                    val btnYes = ButtonType("Да", ButtonBar.ButtonData.YES)
+                    val btnNo = ButtonType("Нет", ButtonBar.ButtonData.NO)
+
+                    val alert = Alert(Alert.AlertType.CONFIRMATION).apply {
+                        title = "Загрузка истории шагов"
+                        headerText = "В файле обнаружена записанная история работы алгоритма."
+                        contentText = "Хотите загрузить её в плеер для пошагового просмотра?"
+                        buttonTypes.setAll(btnYes, btnNo)
+                    }
+
+                    val result = alert.showAndWait()
+                    if (result.isPresent && result.get() == btnYes) {
+                        loadSnapshots(parsedGraph.steps)
+                        currentIndex = 0
+                    } else {
+                        snapshots = emptyList()
+                        currentIndex = 0
+                    }
+                }
+
                 updateUI()
             } catch (e: Exception) {
                 showError("Не удалось прочитать файл: ${e.message}")
@@ -333,7 +401,7 @@ class App : Application() {
             gc.translate(midX, midY)
             gc.rotate(Math.toDegrees(angle))
             gc.fill = Color.BLACK
-            gc.font = javafx.scene.text.Font(14.0)
+            gc.font = Font(14.0)
             gc.fillText("${edge.weight}", -10.0, -5.0)
             gc.restore()
         }
@@ -363,7 +431,7 @@ class App : Application() {
         }
 
         gc.fill = Color.WHITE
-        gc.font = javafx.scene.text.Font(14.0)
+        gc.font = Font(14.0)
         for (vertex in vertexes) {
             gc.fillText(vertex.name, vertex.x - 10, vertex.y + 5)
         }
@@ -467,21 +535,31 @@ class App : Application() {
         val btnUndo = Button("↩")
         val btnRedo = Button("↪")
         val btnSave = Button().apply {
-            val image = javafx.scene.image.Image("file:src/main/resources/images/save.png")
-            graphic = javafx.scene.image.ImageView(image).apply {
-                fitWidth = 40.0
-                fitHeight = 40.0
-                isPreserveRatio = true
+            val resourceUrl = org.example.App::class.java.getResource("/images/save.png")
+            if (resourceUrl != null) {
+                val image = Image(resourceUrl.toExternalForm())
+                graphic = ImageView(image).apply {
+                    fitWidth = 40.0
+                    fitHeight = 40.0
+                    isPreserveRatio = true
+                }
+            } else {
+                text = "💾"
             }
-            contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
+            contentDisplay = ContentDisplay.GRAPHIC_ONLY
         }
 
         val btnLoad = Button().apply {
-            val image = javafx.scene.image.Image("file:src/main/resources/images/load.png")
-            graphic = javafx.scene.image.ImageView(image).apply {
-                fitWidth = 40.0
-                fitHeight = 40.0
-                isPreserveRatio = true
+            val resourceUrl = org.example.App::class.java.getResource("/images/load.png")
+            if (resourceUrl != null) {
+                val image = Image(resourceUrl.toExternalForm())
+                graphic = javafx.scene.image.ImageView(image).apply {
+                    fitWidth = 40.0
+                    fitHeight = 40.0
+                    isPreserveRatio = true
+                }
+            } else {
+                text = "📂"
             }
             contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
         }

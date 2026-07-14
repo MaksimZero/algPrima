@@ -2,9 +2,10 @@ package org.example.backend
 
 import java.io.File
 import org.example.backend.models.Vertex
+import org.example.backend.models.AlgorithmSnapshot
 
 class GraphExporter(){
-    fun SaveGraphToFile(filePath: String, vertices: List<Vertex>, matrix: Array<DoubleArray>){
+    fun saveGraphToFile(filePath: String, vertices: List<Vertex>, matrix: Array<DoubleArray>, mstSteps: List<AlgorithmSnapshot>? = null){
         val file = File(filePath)
         val writer = file.bufferedWriter()
 
@@ -22,6 +23,16 @@ class GraphExporter(){
                     if (w != -1.0 && w != Double.POSITIVE_INFINITY) {
                         writer.write("${vertices[i].name} ${vertices[j].name} ${w.toInt()}\n")
                     }
+                }
+            }
+            if (!mstSteps.isNullOrEmpty()) {
+                writer.write("\n# Шаги алгоритма\n")
+                for (step in mstSteps){
+                    val vNames = step.mstVertices.joinToString(",") { it.name }
+                    val eNames = step.mstEdges.joinToString(",") { "${it.from.name}-${it.to.name}-${it.weight}" }
+                    val cNames = step.candidateEdges.joinToString(",") { "${it.from.name}-${it.to.name}-${it.weight}" }
+                    //[номер] | [вес] | [лог] | v:[вершины] | e:[рёбра] | c:[кандидаты]
+                    writer.write("mst_step ${step.stepNumber} | ${step.totalWeight} | ${step.logMessage} | $vNames | $eNames | $cNames\n")
                 }
             }
         } finally {
