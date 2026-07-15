@@ -1,4 +1,4 @@
-package org.example
+package org.example.newpl.demo
 
 import javafx.animation.KeyFrame
 import javafx.animation.Timeline
@@ -20,12 +20,12 @@ import javafx.scene.text.Font
 import javafx.stage.FileChooser
 import javafx.stage.Stage
 import javafx.util.Duration
-import org.example.backend.GraphExporter
-import org.example.backend.GraphParser
-import org.example.backend.PrimEngine
-import org.example.backend.models.AlgorithmSnapshot
-import org.example.backend.models.Edge
-import org.example.backend.models.Vertex
+import org.example.newpl.demo.backend.GraphExporter
+import org.example.newpl.demo.backend.GraphParser
+import org.example.newpl.demo.backend.PrimEngine
+import org.example.newpl.demo.backend.models.AlgorithmSnapshot
+import org.example.newpl.demo.backend.models.Edge
+import org.example.newpl.demo.backend.models.Vertex
 import java.io.File
 import kotlin.apply
 import kotlin.jvm.java
@@ -60,6 +60,8 @@ class App : Application() {
 
     private val currentStep: AlgorithmSnapshot?
         get() = if (snapshots.isNotEmpty() && currentIndex in snapshots.indices) snapshots[currentIndex] else null
+
+    private lateinit var scrollPane: ScrollPane
 
     private fun saveGraphToFile() {
         val fileChooser = FileChooser()
@@ -126,6 +128,8 @@ class App : Application() {
                     showAndWait()
                 }
 
+                updateCanvasSize()
+
             } catch (e: Exception) {
                 showError("Не удалось сохранить файл: ${e.message}")
             }
@@ -181,6 +185,8 @@ class App : Application() {
                         currentIndex = 0
                     }
                 }
+
+                updateCanvasSize()
 
                 updateUI()
             } catch (e: Exception) {
@@ -436,9 +442,96 @@ class App : Application() {
         }
     }
 
+    private fun logSizes() {
+        val scene = gc.canvas.scene
+        val root = scene?.root as? BorderPane
+
+        println("=" .repeat(50))
+        println("SCENE: ${scene?.width} x ${scene?.height}")
+
+        if (root != null) {
+            println("ROOT: ${root.width} x ${root.height}")
+
+            // Размеры панелей
+            val rightPanel = root.right as? VBox
+            val bottomPanel = root.bottom as? HBox
+
+            println("RIGHT PANEL: ${rightPanel?.width} x ${rightPanel?.height}")
+            println("BOTTOM PANEL: ${bottomPanel?.width} x ${bottomPanel?.height}")
+
+            // Вычисляем доступную область
+            val availableWidth = root.width - (rightPanel?.width ?: 0.0)
+            val availableHeight = root.height - (bottomPanel?.height ?: 0.0)
+
+            println("AVAILABLE: $availableWidth x $availableHeight")
+            println("CANVAS: ${gc.canvas.width} x ${gc.canvas.height}")
+            //println("VIEWPORT: ${scrollPane.viewportBounds.width} x ${scrollPane.viewportBounds.height}")
+        }
+        println("=" .repeat(50))
+    }
+
+    private fun updateCanvasSize() {
+        logSizes()
+        val canvas = gc.canvas
+        val scene = gc.canvas.scene
+        val root = scene?.root as? BorderPane
+
+        // Получаем доступную область
+        val rightPanel = root?.right as? VBox
+        val bottomPanel = root?.bottom as? HBox
+        val availableWidth = (root?.width ?: 0.0) - (rightPanel?.width ?: 0.0)
+        val availableHeight = (root?.height ?: 0.0) - (bottomPanel?.height ?: 0.0)
+
+        val viewportWidth = if (::scrollPane.isInitialized) scrollPane.viewportBounds.width else 800.0
+        val viewportHeight = if (::scrollPane.isInitialized) scrollPane.viewportBounds.height else 600.0
+
+        // Используем доступную область как минимум
+        val minWidth = availableWidth.coerceAtLeast(viewportWidth)
+        val minHeight = availableHeight.coerceAtLeast(viewportHeight)
+
+        val padding = 100.0
+        var minX = Double.MAX_VALUE
+        var minY = Double.MAX_VALUE
+        var maxX = Double.MIN_VALUE
+        var maxY = Double.MIN_VALUE
+
+        for (v in vertexes) {
+            if (v.x < minX) minX = v.x
+            if (v.y < minY) minY = v.y
+            if (v.x > maxX) maxX = v.x
+            if (v.y > maxY) maxY = v.y
+        }
+
+        val width = maxX - minX + padding * 2
+        val height = maxY - minY + padding * 2
+
+        println("\n\n\n$minWidth x $minHeight\n\n\n")
+        println("${canvas.width} x ${canvas.height}")
+
+        // Берем максимум между вычисленным размером и доступной областью
+        canvas.width = width.coerceAtLeast(minWidth)
+        canvas.height = height.coerceAtLeast(minHeight)
+
+        // Смещаем вершины, чтобы они были в центре холста
+        if (vertexes.isNotEmpty()) {
+            val offsetX = padding - minX
+            val offsetY = padding - minY
+            for (v in vertexes) {
+                v.x += offsetX
+                v.y += offsetY
+            }
+        }
+    }
+
     override fun start(stage: Stage) {
         val canvas = Canvas(800.0, 600.0)
         gc = canvas.graphicsContext2D
+
+        val scrollPane = ScrollPane(canvas)
+        scrollPane.style = "-fx-background-color: white;"
+        scrollPane.isPannable = false
+        scrollPane.hbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
+        scrollPane.vbarPolicy = ScrollPane.ScrollBarPolicy.AS_NEEDED
 
         canvas.setOnMousePressed { event -> // нажатие кнопки мыши
             val x = event.x
@@ -494,6 +587,7 @@ class App : Application() {
                     if (pressTarget != null) {
                         removeVertex(pressTarget!!)
                         clearMST()
+                        updateCanvasSize()
                         drawAll(gc)
                     } else {
                         // Если не вершина, проверяем ребро
@@ -511,14 +605,74 @@ class App : Application() {
             }
         }
 
-        canvas.setOnMouseDragged { event -> // перемещение мыши (перетаскивание вершины)
-            if (event.button == MouseButton.PRIMARY) { // если при этом зажата ЛКМ то двигаем вершину
+        canvas.setOnMouseDragged { event ->
+            if (event.button == MouseButton.PRIMARY) {
                 val target = dragTarget
                 if (target != null) {
                     target.x = event.x - dragOffsetX
                     target.y = event.y - dragOffsetY
                     isDragging = true
                     drawAll(gc)
+
+                    // Авто-скролл при перетаскивании к границам
+                    val viewport = scrollPane.viewportBounds
+                    val hValue = scrollPane.hvalue
+                    val vValue = scrollPane.vvalue
+                    val hMax = scrollPane.hmax
+                    val vMax = scrollPane.vmax
+                    val hMin = scrollPane.hmin
+                    val vMin = scrollPane.vmin
+                    val scrollSpeed = 0.02
+
+                    val mouseX = event.x
+                    val mouseY = event.y
+
+                    if (mouseX < 30 && hValue > hMin) {
+                        scrollPane.hvalue = (hValue - scrollSpeed).coerceAtLeast(hMin)
+                    } else if (mouseX > viewport.width - 30 && hValue < hMax) {
+                        scrollPane.hvalue = (hValue + scrollSpeed).coerceAtMost(hMax)
+                    }
+
+                    if (mouseY < 30 && vValue > vMin) {
+                        scrollPane.vvalue = (vValue - scrollSpeed).coerceAtLeast(vMin)
+                    } else if (mouseY > viewport.height - 30 && vValue < vMax) {
+                        scrollPane.vvalue = (vValue + scrollSpeed).coerceAtMost(vMax)
+                    }
+
+                    // Расширение холста при перетаскивании за границы
+                    val canvasWidth = canvas.width
+                    val canvasHeight = canvas.height
+                    var needUpdate = false
+
+                    if (target.x < 50) {
+                        val newWidth = canvasWidth + 50
+                        canvas.width = newWidth
+                        target.x += 50
+                        for (v in vertexes) {
+                            if (v != target) v.x += 50
+                        }
+                        needUpdate = true
+                    } else if (target.x > canvasWidth - 50) {
+                        canvas.width = canvasWidth + 50
+                        needUpdate = true
+                    }
+
+                    if (target.y < 50) {
+                        val newHeight = canvasHeight + 50
+                        canvas.height = newHeight
+                        target.y += 50
+                        for (v in vertexes) {
+                            if (v != target) v.y += 50
+                        }
+                        needUpdate = true
+                    } else if (target.y > canvasHeight - 50) {
+                        canvas.height = canvasHeight + 50
+                        needUpdate = true
+                    }
+
+                    if (needUpdate) {
+                        drawAll(gc)
+                    }
                 }
             }
         }
@@ -535,7 +689,7 @@ class App : Application() {
         val btnRedo = Button("↪")
 
         val btnSave = Button().apply {
-            val resourceUrl = org.example.App::class.java.getResource("/images/save.png")
+            val resourceUrl = org.example.newpl.demo.App::class.java.getResource("/images/save.png")
             if (resourceUrl != null) {
                 val image = Image(resourceUrl.toExternalForm())
                 graphic = ImageView(image).apply {
@@ -550,7 +704,7 @@ class App : Application() {
         }
 
         val btnLoad = Button().apply {
-            val resourceUrl = org.example.App::class.java.getResource("/images/load.png")
+            val resourceUrl = org.example.newpl.demo.App::class.java.getResource("/images/load.png")
             if (resourceUrl != null) {
                 val image = Image(resourceUrl.toExternalForm())
                 graphic = ImageView(image).apply {
@@ -675,15 +829,20 @@ class App : Application() {
         controlBox.maxHeight = 100.0
 
         val root = BorderPane()
-        root.center = canvas
+        root.center = scrollPane
         root.bottom = controlBox
         root.right = infoPanel
 
-        canvas.widthProperty().bind(root.widthProperty().subtract(infoPanel.widthProperty()))
-        canvas.heightProperty().bind(root.heightProperty().subtract(controlBox.heightProperty()))
+        root.widthProperty().addListener { _, _, _ ->
+            updateCanvasSize()
+            drawAll(gc)
+        }
+        root.heightProperty().addListener { _, _, _ ->
+            updateCanvasSize()
+            drawAll(gc)
+        }
 
-        canvas.widthProperty().addListener { _, _, _ -> drawAll(gc) }
-        canvas.heightProperty().addListener { _, _, _ -> drawAll(gc) }
+        updateCanvasSize()
 
         val scene = Scene(root, 1024.0, 768.0)
         stage.title = "Визуализация алгоритма Прима"
@@ -727,6 +886,7 @@ class App : Application() {
         alert.headerText = "Визуализация алгоритма Прима"
 
         val developerInfo = """
+        Бригада номер 6
         Разработчики:
 
            Зеров Максим
@@ -737,6 +897,7 @@ class App : Application() {
 
            Геращенкова Мария
            Группа: 4343
+           
 
         Программа предназначена для визуализации работы 
         алгоритма Прима на взвешенных неориентированных графах.
@@ -770,7 +931,7 @@ class App : Application() {
             }
 
             if (imageFile == null) {
-                val resourceUrl = org.example.App::class.java.getResource("/images/meme.jpg")
+                val resourceUrl = org.example.newpl.demo.App::class.java.getResource("/images/meme.jpg")
                 if (resourceUrl != null) {
                     val image = Image(resourceUrl.toExternalForm())
                     val imageView = ImageView(image)

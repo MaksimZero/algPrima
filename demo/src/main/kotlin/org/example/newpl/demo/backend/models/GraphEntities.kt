@@ -1,4 +1,4 @@
-package org.example.backend.models
+package org.example.newpl.demo.backend.models
 
 import javafx.scene.paint.Color
 
