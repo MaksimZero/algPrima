@@ -21,11 +21,12 @@ import javafx.stage.FileChooser
 import javafx.stage.Stage
 import javafx.util.Duration
 import org.example.backend.GraphExporter
+import org.example.backend.GraphParser
 import org.example.backend.PrimEngine
 import org.example.backend.models.AlgorithmSnapshot
 import org.example.backend.models.Edge
 import org.example.backend.models.Vertex
-import org.example.backend.GraphParser
+import java.io.File
 import kotlin.apply
 import kotlin.jvm.java
 
@@ -66,7 +67,6 @@ class App : Application() {
         fileChooser.extensionFilters.add(
             FileChooser.ExtensionFilter("Текстовые файлы (*.txt)", "*.txt")
         )
-
 
         val stage = gc.canvas.scene.window as Stage
         val file = fileChooser.showSaveDialog(stage)
@@ -118,7 +118,6 @@ class App : Application() {
                     matrix = generatedMatrix,
                     mstSteps = snapshotsToSend
                 )
-
 
                 Alert(Alert.AlertType.INFORMATION).apply {
                     title = "Успех"
@@ -189,8 +188,6 @@ class App : Application() {
             }
         }
     }
-
-
 
     fun addVertex(x: Double, y: Double, radius: Double = 20.0, color: Color = Color.LIGHTBLUE): Vertex {
         val name = "V${++vertexCounter}"
@@ -288,12 +285,12 @@ class App : Application() {
 
     private fun runAlgorithm(startVertex: Vertex?) {
         if (vertexes.isEmpty()) {
-            println("Граф пуст!")
+            showError("Граф пуст!")
             return
         }
         val start = startVertex ?: vertexes.firstOrNull()
         if (start == null) {
-            println("Нет стартовой вершины")
+            showError("Нет стартовой вершины")
             return
         }
 
@@ -315,7 +312,7 @@ class App : Application() {
         val engine = PrimEngine()
         val steps = engine.calculatePrim(vertexes, matrix, start)
         if (steps.isEmpty()) {
-            println("Алгоритм не смог построить остов (граф несвязный)")
+            showError("Алгоритм не смог построить остов (граф несвязный)")
             return
         }
         loadSnapshots(steps)
@@ -388,6 +385,7 @@ class App : Application() {
 
             gc.strokeLine(edge.from.x, edge.from.y, edge.to.x, edge.to.y)
 
+            // отрисовка веса ребра
             val midX = (edge.from.x + edge.to.x) / 2
             val midY = (edge.from.y + edge.to.y) / 2
             val dx = edge.to.x - edge.from.x
@@ -406,6 +404,7 @@ class App : Application() {
             gc.restore()
         }
 
+        // отрисовка вершин
         for (vertex in vertexes) {
             val isInMst = vertex in mstVertices
             gc.fill = if (isInMst) Color.GREEN else vertex.color
@@ -534,6 +533,7 @@ class App : Application() {
         val btnClear = Button("✕")
         val btnUndo = Button("↩")
         val btnRedo = Button("↪")
+
         val btnSave = Button().apply {
             val resourceUrl = org.example.App::class.java.getResource("/images/save.png")
             if (resourceUrl != null) {
@@ -553,7 +553,7 @@ class App : Application() {
             val resourceUrl = org.example.App::class.java.getResource("/images/load.png")
             if (resourceUrl != null) {
                 val image = Image(resourceUrl.toExternalForm())
-                graphic = javafx.scene.image.ImageView(image).apply {
+                graphic = ImageView(image).apply {
                     fitWidth = 40.0
                     fitHeight = 40.0
                     isPreserveRatio = true
@@ -561,16 +561,37 @@ class App : Application() {
             } else {
                 text = "📂"
             }
-            contentDisplay = javafx.scene.control.ContentDisplay.GRAPHIC_ONLY
+            contentDisplay = ContentDisplay.GRAPHIC_ONLY
         }
+
         val btnPlay = Button("▶")
         val btnPause = Button("⏸")
         val btnStop = Button("⏹")
 
+        val btnAbout = Button("ℹ️").apply {
+            style = """
+                -fx-min-width: 80px;
+                -fx-min-height: 80px;
+                -fx-max-width: 80px;
+                -fx-max-height: 80px;
+                -fx-pref-width: 80px;
+                -fx-pref-height: 80px;
+                -fx-font-size: 32px;
+                -fx-background-color: #f0f0f0;
+                -fx-border-color: #cccccc;
+                -fx-border-width: 0 1px 0 0;
+                -fx-cursor: hand;
+            """
+            isFocusTraversable = false
+            tooltip = Tooltip("О разработчиках")
+            setOnAction { showAboutDialog() }
+        }
+
         val allButtons = listOf(
             btnClear, btnSave, btnLoad,
             btnUndo, btnRedo,
-            btnPlay, btnPause, btnStop
+            btnPlay, btnPause, btnStop,
+            btnAbout
         )
 
         allButtons.forEach { button ->
@@ -589,8 +610,6 @@ class App : Application() {
             """
             button.isFocusTraversable = false
         }
-
-
 
         val slider = Slider(200.0, 3000.0, 1000.0)
         slider.prefWidth = 150.0
@@ -626,12 +645,13 @@ class App : Application() {
             if (snapshots.isNotEmpty() && currentIndex < snapshots.size - 1) {
                 play()
             }
-
         }
         btnPause.setOnAction { pause() }
         btnStop.setOnAction { reset() }
         btnUndo.setOnAction { stepBackward() }
         btnRedo.setOnAction { stepForward() }
+
+        // ==================== ПАНЕЛИ ====================
 
         val infoPanel = VBox(10.0)
         infoPanel.padding = Insets(15.0)
@@ -671,6 +691,8 @@ class App : Application() {
         stage.show()
     }
 
+    // ==================== ДИАЛОГИ ====================
+
     private fun requestWeight(): Double? {
         val dialog = TextInputDialog("1.0")
         dialog.title = "Вес ребра"
@@ -697,6 +719,113 @@ class App : Application() {
         alert.title = "Ошибка"
         alert.headerText = null
         alert.contentText = message
+        alert.showAndWait()
+    }
+    private fun showAboutDialog() {
+        val alert = Alert(Alert.AlertType.INFORMATION)
+        alert.title = "О разработчиках"
+        alert.headerText = "Визуализация алгоритма Прима"
+
+        val developerInfo = """
+        Разработчики:
+
+           Зеров Максим
+           Группа: 4343
+
+           Семенчик Влад
+           Группа: 4343
+
+           Геращенкова Мария
+           Группа: 4343
+
+        Программа предназначена для визуализации работы 
+        алгоритма Прима на взвешенных неориентированных графах.
+
+     """.trimIndent()
+
+        val vbox = VBox(15.0)
+        vbox.padding = Insets(15.0)
+        vbox.alignment = Pos.TOP_LEFT
+
+        val label = Label(developerInfo)
+        label.isWrapText = true
+        label.style = "-fx-font-size: 14px;"
+        vbox.children.add(label)
+
+        val separator = Separator()
+        separator.style = "-fx-padding: 5px 0;"
+        vbox.children.add(separator)
+        try {
+            val memePaths = listOf(
+                "src/main/resources/images/meme.jpg",
+            )
+
+            var imageFile: File? = null
+            for (path in memePaths) {
+                val f = File(path)
+                if (f.exists()) {
+                    imageFile = f
+                    break
+                }
+            }
+
+            if (imageFile == null) {
+                val resourceUrl = org.example.App::class.java.getResource("/images/meme.jpg")
+                if (resourceUrl != null) {
+                    val image = Image(resourceUrl.toExternalForm())
+                    val imageView = ImageView(image)
+                    imageView.fitWidth = 400.0
+                    imageView.fitHeight = 300.0
+                    imageView.isPreserveRatio = true
+                    imageView.style = "-fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 8px;"
+
+                    val memeLabel = Label("Любимый мем разработчиков:")
+                    memeLabel.style = "-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #333333;"
+
+                    val memeBox = VBox(5.0)
+                    memeBox.alignment = Pos.CENTER
+                    memeBox.children.addAll(memeLabel, imageView)
+                    vbox.children.add(memeBox)
+
+                    alert.dialogPane.content = vbox
+                    alert.dialogPane.style = "-fx-min-width: 500px; -fx-min-height: 450px;"
+                    alert.isResizable = true
+                    alert.showAndWait()
+                    return
+                }
+            }
+
+            if (imageFile != null) {
+                val image = Image(imageFile!!.toURI().toString())
+                val imageView = ImageView(image)
+                imageView.fitWidth = 400.0
+                imageView.fitHeight = 300.0
+                imageView.isPreserveRatio = true
+                imageView.style = "-fx-border-color: #cccccc; -fx-border-width: 1px; -fx-border-radius: 8px;"
+
+                val memeLabel = Label("Любимый мем разработчиков:")
+                memeLabel.style = "-fx-font-weight: bold; -fx-font-size: 14px; -fx-text-fill: #333333;"
+
+                val memeBox = VBox(5.0)
+                memeBox.alignment = Pos.CENTER
+                memeBox.children.addAll(memeLabel, imageView)
+
+                vbox.children.add(memeBox)
+            } else {
+                val errorLabel = Label("⚠️ Мем не найден. Положите картинку в resources/images/meme.jpg")
+                errorLabel.style = "-fx-text-fill: #999999; -fx-font-size: 12px;"
+                vbox.children.add(errorLabel)
+            }
+        } catch (e: Exception) {
+            val errorLabel = Label("⚠️ Ошибка загрузки мема: ${e.message}")
+            errorLabel.style = "-fx-text-fill: #999999; -fx-font-size: 12px;"
+            vbox.children.add(errorLabel)
+        }
+
+        alert.dialogPane.content = vbox
+        alert.dialogPane.style = "-fx-min-width: 500px; -fx-min-height: 450px;"
+        alert.isResizable = true
+
         alert.showAndWait()
     }
 }
