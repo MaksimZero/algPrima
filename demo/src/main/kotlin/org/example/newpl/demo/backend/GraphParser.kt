@@ -1,9 +1,9 @@
-package org.example.backend
+package org.example.newpl.demo.backend
 
 import java.io.File
-import org.example.backend.models.Vertex
-import org.example.backend.models.Edge
-import org.example.backend.models.AlgorithmSnapshot
+import org.example.newpl.demo.backend.models.Vertex
+import org.example.newpl.demo.backend.models.Edge
+import org.example.newpl.demo.backend.models.AlgorithmSnapshot
 
 data class ParsedGraph(
     val vertices: List<Vertex>,
